@@ -190,7 +190,7 @@ def keep_awake():
         event_queue.register_world_listener()
         while True:
             sleep(500)
-threading.Thread(target=keep_awake).start()
+threading.Thread(target=keep_awake, daemon=True).start()
 
 
 dpg.start_dearpygui()
