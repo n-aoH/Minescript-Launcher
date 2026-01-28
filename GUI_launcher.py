@@ -3,11 +3,14 @@ from os import mkdir, chdir, listdir
 import webbrowser
 from time import sleep
 import threading
+import json
+
 
 from minescript import execute, job_info, EventQueue
 
 
-NAME = "launcher"
+
+
 
 """
 @Name: GUI Launcher
@@ -31,12 +34,34 @@ try:
 except:
     pass
 
-try:
-    chdir(NAME)
-except:
-    mkdir(NAME)
-    print(f"This script has created a folder in your minescript folder named '{NAME}'. Place your scripts into that folder in order to have this script recognize them.")
-    exit()
+default_config = {
+    "Path":"launcher",
+    "Data Path Name":"launcher data",
+    "Confined":False
+}
+
+first_time = True
+def readcfg():
+    global config, first_time
+    try:
+
+        with open("launcher_config.json", "x") as file:
+            json.dump(default_config,file)
+        config = default_config
+    except FileExistsError:
+
+        with open("launcher_config.json", "r") as file:
+            config = json.load(file)
+        first_time = False
+        
+readcfg()    
+
+
+
+
+
+
+
 
 try:
     import dearpygui.dearpygui as dpg
@@ -44,9 +69,76 @@ except:
     print(f"This script requires the dearpygui module to operate. Install it in your python instance using 'py -m pip install dearpygui' and the re-run this script. You're almost there ;)")
     exit()
 
+def confied_dropdown(sender, data):
+    global default_config
+    default_config["Confined"]= not "Use" in data
+
+def path_dropdown(sender, data):
+    global default_config
+    default_config["Path"]= data
+
+def path_data(sender, data):
+    global default_config
+    default_config["Data Path Name"] = data
+if first_time:
+    dpg.create_context()
+    dpg.create_viewport(title='Minescript GUI Launcher', width=650, height=300)
+    with dpg.window(label="Launcher", width=750,height=300, tag="Main"):
+
+        dpg.add_text("Welcome! You are seeing this pop-up because it is your first time using this script.")
+        
+        with dpg.child_window():
+            dpg.add_text("Would  You like for this script to use the '/minescript' directory or its own?")
+            dpg.add_combo(items=["Use '/minescript' (fastest onboarding)", "Create a new directory (Drop scripts into there for this script to recognize them)"],
+                          callback=confied_dropdown,default_value="Use '/minescript' (fastest onboarding)")
+
+            dpg.add_spacer()
+
+            dpg.add_text("Isolated Script path: ")
+            dpg.add_input_text(default_value=default_config["Path"],callback=path_dropdown)
+
+            dpg.add_spacer()
+
+            dpg.add_text("Data folder name:")
+            dpg.add_input_text(default_value=default_config["Data Path Name"],callback=path_data)
+
+            dpg.add_spacer()
+
+            dpg.add_button(label="Done!",callback=dpg.stop_dearpygui, width=100, height= 20)
+    dpg.set_primary_window("Main",True)
+
+    
+
+
+    dpg.setup_dearpygui()
+
+    
+    dpg.show_viewport()
+
+
+    dpg.start_dearpygui()
+
+    with open("launcher_config.json", "w") as file:
+        json.dump(default_config,file)
+    config = default_config
+
+    
+    dpg.destroy_context()
+
+CONFINED = config["Confined"]
+
+NAME = config["Path"]
+
+if CONFINED:
+    try:
+        chdir(NAME)
+    except:
+        mkdir(NAME)
+        print(f"This script has created a folder in your minescript folder named '{NAME}'. Place your scripts into that folder in order to have this script recognize them.")
+        exit()
 # Initialize
 scripts = []
-categories = []
+categories = ["Uncategorized"]
 
 
 for file in listdir():
@@ -56,11 +148,12 @@ for file in listdir():
 
             transcribe = False
             description = ""
-            name = ""
+            name = file.removesuffix(".py")
             author = ""
             category = "Uncategorized"
             version = ""
             link = ""
+            mc_details = "Unspecified."
 
 
             lines = script.readlines()
@@ -99,7 +192,10 @@ for file in listdir():
 
                 if line.startswith("@Link:"):
                     link = line.lstrip("@Link: ")
-                
+            if CONFINED:
+                directory = NAME+"/"+file.removesuffix(".py")
+            else:
+                directory = file.removesuffix(".py")
             data = {
                     "Name":name,
                     "Description":description,
@@ -107,7 +203,8 @@ for file in listdir():
                     "Category":category,
                     "MC":mc_details,
                     "Version":version,
-                    "Dir":NAME+"/"+file.removesuffix(".py"),
+                    
+                    "Dir":directory,
                     "Link":link
                 }
             
@@ -141,7 +238,7 @@ def executor(sender, data, user_data):
 
     
     
-
+categories.append(categories.pop(0))
 
 with dpg.window(label="Launcher", width=600,height=300, tag="Main"):
     
@@ -151,33 +248,34 @@ with dpg.window(label="Launcher", width=600,height=300, tag="Main"):
         for category in categories:
             with dpg.collapsing_header(label=category):
                 
-                with dpg.child_window():
+                with dpg.child_window(height=500):
                     for script in scripts:
                         if script["Category"] == category:
                             with dpg.collapsing_header(label=script["Name"]):
+                                with dpg.child_window(height=300):
                                 
-                                if script["MC"] != "":
-                                    dpg.add_text("MC Info: "+script["MC"])
+                                    if script["MC"] != "":
+                                        dpg.add_text("MC Info: "+script["MC"])
 
-                                
-                                if script["Version"] != "":
-                                    dpg.add_text("Version: "+script["Version"])
-                                
-                                if script["Description"] != "":
-                                    dpg.add_text(script["Description"])
-                                else:
-                                    dpg.add_text("No Description.")
 
-                                if script["Author"] != "":
-                                    dpg.add_text("Made by: "+script["Author"])
-                                else:
-                                    dpg.add_text("Author not found.")
-                                
-                                if script["Link"] != "":
-                                    dpg.add_button(label="Repo Link",callback= lambda: webbrowser.open(script["Link"]))
+                                    if script["Version"] != "":
+                                        dpg.add_text("Version: "+script["Version"])
 
-                                dpg.add_text(label="")
-                                dpg.add_checkbox(label="Run", callback=executor,user_data=script["Dir"])
+                                    if script["Description"] != "":
+                                        dpg.add_text(script["Description"])
+                                    else:
+                                        dpg.add_text("No Description.")
+
+                                    if script["Author"] != "":
+                                        dpg.add_text("Made by: "+script["Author"])
+                                    else:
+                                        dpg.add_text("Author not found.")
+
+                                    if script["Link"] != "":
+                                        dpg.add_button(label="Repo Link",callback= lambda: webbrowser.open(script["Link"]))
+
+                                    dpg.add_text(label="")
+                                    dpg.add_checkbox(label="Run", callback=executor,user_data=script["Dir"])
 
 
 
