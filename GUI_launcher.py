@@ -304,106 +304,122 @@ def edit_menu(sender, app_data, user_data):
     def close_it():
         dpg.delete_item(script_name+"_window")
 
+
+    #Had my boy chat help me on this one
     def overwrite_script():
-        
-        with open(user_data["Dir"]+".py", "r") as file:
+        path = user_data["Dir"] + ".py"
+
+        with open(path, "r", encoding="utf-8") as file:
             lines = file.readlines()
-            old_file = file
 
+        new_data = {
+            "Name": dpg.get_value(script_name + "_name"),
+            "Author": dpg.get_value(script_name + "_author"),
+            "MC": str(dpg.get_value(script_name + "_mc")),
+            "Version": dpg.get_value(script_name + "_version"),
+            "Category": dpg.get_value(script_name + "_category"),
+            "Link": dpg.get_value(script_name + "_link"),
+            "Description": dpg.get_value(script_name + "_description"),
+        }
 
+        output = []
+        skipping_description = False
+        last_meta_index = -1
+        has_docstring = False
 
-            line = 0
-            #lines.insert(0,"#Test\n")
+        for line in lines:
+            stripped = line.strip()
 
-            new_data = {
-                "Name":dpg.get_value(script_name+"_name"),
-                "Author":dpg.get_value(script_name+"_author"),
-                "MC":str(dpg.get_value(script_name+"_mc")),
-                "Version":dpg.get_value(script_name+"_version"),
-                "Category":dpg.get_value(script_name+"_category"),
-                "Link":dpg.get_value(script_name+"_link"),
-                "Description":dpg.get_value(script_name+"_description")
-            }
+            # --- Strip ALL description blocks completely ---
+            if stripped == ">":
+                skipping_description = True
+                has_docstring = True
+                continue
 
-            last_line = 0
-            DESCRIPTION = False
-            last_description = 0
-            while line < len(lines):
+            if stripped == "<":
+                skipping_description = False
+                continue
 
-                if "@Name:" in lines[line]:
-                    lines.pop(line)
-                    lines.insert(line,"@Name: "+new_data["Name"]+"\n")
-                    new_data.pop("Name")
-                    last_line = line
-                if "@Author:" in lines[line]:
-                    lines.pop(line)
-                    lines.insert(line,"@Author: "+new_data["Author"]+"\n")
-                    new_data.pop("Author")
-                    last_line = line
-                if "@MC:" in lines[line]:
-                    lines.pop(line)
-                    lines.insert(line,"@MC: "+new_data["MC"]+"\n")
-                    new_data.pop("MC")
-                    last_line = line
-                if "@Version:" in lines[line]:
-                    lines.pop(line)
-                    lines.insert(line,"@Version: "+new_data["Version"]+"\n")
-                    new_data.pop("Version")
-                    last_line = line
-                if "@Category:" in lines[line]:
-                    lines.pop(line)
-                    lines.insert(line,"@Category: "+new_data["Category"]+"\n")
-                    new_data.pop("Category")
-                    last_line = line
-                if "@Link:" in lines[line]:
-                    lines.pop(line)
-                    lines.insert(line,"@Link: "+new_data["Link"]+"\n")
-                    new_data.pop("Link")
-                    last_line = line
-                
-                if ">" in lines[line]:
-                    DESCRIPTION = True
-                    
-                
-                if "<" in lines[line]:
-                    DESCRIPTION = False
-                elif DESCRIPTION and not ">" in lines[line]:
-                    lines.pop(line)
-                    line -= 1
-                    
+            if skipping_description:
+                continue
 
+            # --- Detect docstring ---
+            if stripped == '"""':
+                has_docstring = True
+                output.append(line)
+                continue
 
-                line += 1
-            NEW = False
-            if last_line == 0:
-                NEW = True
-                lines.insert(0,'"""\n')
+            # --- Replace metadata ---
+            replaced = False
+            for key in list(new_data.keys()):
+                if key == "Description":
+                    continue
 
-            keys = new_data.keys()
-            for key in keys:
+                tag = f"@{key}:"
+                if stripped.startswith(tag):
+                    output.append(f"{tag} {new_data.pop(key)}\n")
+                    last_meta_index = len(output) - 1
+                    has_docstring = True
+                    replaced = True
+                    break
+
+            if replaced:
+                continue
+
+            output.append(line)
+
+            if stripped.startswith("@"):
+                last_meta_index = len(output) - 1
+                has_docstring = True
+
+        # --------------------------------------------------
+        # No existing header → create a new one
+        # --------------------------------------------------
+        if not has_docstring:
+            header = ['"""\n']
+            for key, value in new_data.items():
                 if key != "Description":
-                    lines.insert(last_line,"@"+key+": "+new_data[key]+"\n")
-                    last_line += 1
-                
-                else:
-                    if ">\n" in lines:
+                    header.append(f"@{key}: {value}\n")
 
-                        lines.insert(lines.index(">\n")+1,new_data["Description"]+"\n")
-                    else:
-                        line = last_line-1
-                        while "@" not in lines[line]:
-                            line += 1
-                        lines.insert(line+1,">\n"+new_data["Description"]+"\n"+"<\n")
-            if NEW:
-                lines.insert(0,'"""\n')
-        with open(user_data["Dir"]+"-edited"+".py", "w") as file:
-            for line in lines:
-                file.write(line)
-        dpg.delete_item("Viewer Window",children_only=True)
+            desc = new_data["Description"].strip("\n")
+            if desc:
+                header.append(">\n")
+                header.append(desc + "\n")
+                header.append("<\n")
+
+            header.append('"""\n\n')
+            output = header + output
+
+        # --------------------------------------------------
+        # Existing header → insert missing fields cleanly
+        # --------------------------------------------------
+        else:
+            insert_at = last_meta_index + 1 if last_meta_index >= 0 else 0
+
+            for key, value in list(new_data.items()):
+                if key == "Description":
+                    continue
+                output.insert(insert_at, f"@{key}: {value}\n")
+                insert_at += 1
+
+            desc = new_data["Description"].strip("\n")
+            if desc:
+                output.insert(insert_at, ">\n")
+                output.insert(insert_at + 1, desc + "\n")
+                output.insert(insert_at + 2, "<\n")
+
+        # --- Write output ---
+        out_path = user_data["Dir"] + ".py"
+        with open(out_path, "w", encoding="utf-8") as file:
+            file.writelines(output)
+
+        dpg.delete_item("Viewer Window", children_only=True)
         get_scripts()
         generate_scripts()
 
-        #with open()
+
+
+            #with open()
 
     script = user_data
     if script["Name"] == "Unspecified":
@@ -426,7 +442,7 @@ def edit_menu(sender, app_data, user_data):
         dpg.add_spacer()
         dpg.add_input_text(default_value=script["Category"],label="Category",tag=script_name+"_category")
         dpg.add_spacer()
-        dpg.add_input_text(default_value=script["Description"].lstrip("\n").rstrip("\n"),label="Description \n(CTRL + Enter \nfor new line)",ctrl_enter_for_new_line=True,multiline=True,tag=script_name+"_description")
+        dpg.add_input_text(default_value=script["Description"].lstrip("\n").rstrip("\n").replace("\n\n","\n"),label="Description \n(CTRL + Enter \nfor new line)",ctrl_enter_for_new_line=True,multiline=True,tag=script_name+"_description")
         dpg.add_button(label="Save",callback=overwrite_script)
 
 def generate_scripts():
