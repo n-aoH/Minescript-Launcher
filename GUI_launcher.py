@@ -32,8 +32,8 @@ compute_modules()
 @MC: Tested on 1.21.10. Works on all versions.
 @Version: 1
 @Category: INFO
-@Link: https://github.com/n-aoH/Minescript-Launcher/tree/main
-
+@Link: https://github.com/n-aoH/Minescript-Launcher/edit/main/GUI_launcher.py
+@Required: minescript_plus
 
 >
 A script made to collect and organize your own scripts.
