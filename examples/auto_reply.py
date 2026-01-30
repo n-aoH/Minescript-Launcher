@@ -11,7 +11,7 @@ import threading
 @Version: 1.0
 @Link: https://github.com/n-aoH/Minescript-Launcher/blob/main/examples/auto_reply.py
 @Category: Macros
-@Required: lib_launcher
+@Required: lib_launcher:https://github.com/n-aoH/Minescript-Launcher/blob/main/lib_launcher.py
 
 >
 A very primitive macro that 
