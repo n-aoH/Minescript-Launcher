@@ -305,8 +305,13 @@ def edit_menu(sender, app_data, user_data):
         dpg.delete_item(script_name+"_window")
 
     def overwrite_script():
+        
         with open(user_data["Dir"]+".py", "r") as file:
             lines = file.readlines()
+            old_file = file
+
+
+
             line = 0
             #lines.insert(0,"#Test\n")
 
@@ -391,12 +396,14 @@ def edit_menu(sender, app_data, user_data):
                         lines.insert(line+1,">\n"+new_data["Description"]+"\n"+"<\n")
             if NEW:
                 lines.insert(0,'"""\n')
-        with open(user_data["Dir"]+".py", "w") as file:
+        with open(user_data["Dir"]+"-edited"+".py", "w") as file:
             for line in lines:
                 file.write(line)
         dpg.delete_item("Viewer Window",children_only=True)
         get_scripts()
         generate_scripts()
+
+        #with open()
 
     script = user_data
     if script["Name"] == "Unspecified":
@@ -501,3 +508,4 @@ threading.Thread(target=keep_awake, daemon=True).start()
 
 dpg.start_dearpygui()
 dpg.destroy_context()
+
