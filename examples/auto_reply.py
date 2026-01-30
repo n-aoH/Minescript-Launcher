@@ -9,7 +9,7 @@ import threading
 @Author: @No
 @MC: Works on all versions.
 @Version: 1.0
-@Link: 
+@Link: https://github.com/n-aoH/Minescript-Launcher/blob/main/examples/auto_reply.py
 @Category: Macros
 @Required: lib_launcher
 
