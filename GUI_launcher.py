@@ -39,7 +39,6 @@ compute_modules()
 A script made to collect and organize your own scripts.
 Launches scripts with an API to communicate to it.
 <
-
 """
 
 
@@ -228,6 +227,7 @@ def get_scripts():
                         if line == "@Link:":
                             link = ""
                     if line.startswith("@Required:"):
+                        
                         to_cut = line.replace("https://","")
                         segments = to_cut.rpartition(":")
                         modname = segments[0].removeprefix("@Required: ")
@@ -378,13 +378,14 @@ def edit_menu(sender, app_data, user_data):
             for key in keys:
                 if key != "Description":
                     lines.insert(last_line,"@"+key+": "+new_data[key]+"\n")
-                    
+                    last_line += 1
+                
                 else:
                     if ">\n" in lines:
 
                         lines.insert(lines.index(">\n")+1,new_data["Description"]+"\n")
                     else:
-                        line = last_line
+                        line = last_line-1
                         while "@" not in lines[line]:
                             line += 1
                         lines.insert(line+1,">\n"+new_data["Description"]+"\n"+"<\n")
@@ -500,4 +501,3 @@ threading.Thread(target=keep_awake, daemon=True).start()
 
 dpg.start_dearpygui()
 dpg.destroy_context()
-
