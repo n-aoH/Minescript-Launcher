@@ -30,7 +30,7 @@ compute_modules()
 @Name: GUI Launcher
 @Author: @No
 @MC: Tested on 1.21.10. Works on all versions.
-@Version: 1
+@Version: 2
 @Category: INFO
 @Link: https://github.com/n-aoH/Minescript-Launcher/edit/main/GUI_launcher.py
 @Required: minescript_plus
@@ -165,18 +165,19 @@ def get_scripts():
     scripts = []
     categories = ["Uncategorized"]
     for file in listdir():
-        if file.endswith(".py"):
+        if file.endswith(".py") or file.endswith(".pyj"):
             with open(file, 'r') as script:
 
 
                 transcribe = False
                 description = ""
-                name = file.removesuffix(".py")
+                name = file.removesuffix(".py").removesuffix(".pyj")
                 author = ""
                 category = "Uncategorized"
                 version = ""
                 link = ""
                 mc_details = "Unspecified."
+                pyjinn = file.endswith(".pyj")
 
 
                 lines = script.readlines()
@@ -243,9 +244,9 @@ def get_scripts():
 
 
                 if CONFINED:
-                    directory = NAME+"/"+file.removesuffix(".py")
+                    directory = NAME+"/"+file.removesuffix(".py").removesuffix(".pyj")
                 else:
-                    directory = file.removesuffix(".py")
+                    directory = file.removesuffix(".py").removesuffix(".pyj")
                 data = {
                         "Name":name,
                         "Description":description,
@@ -256,13 +257,15 @@ def get_scripts():
 
                         "Dir":directory,
                         "Link":link,
-                        "Dependencies":dependencies
+                        "Dependencies":dependencies,
+                        "Pyjinn":pyjinn
                     }
                 #print(dependencies)
 
                 if category not in categories:
                     categories.append(category)
                 scripts.append(data)
+                
         categories.append(categories.pop(0))
 
 get_scripts()   
@@ -307,7 +310,11 @@ def edit_menu(sender, app_data, user_data):
 
     #Had my boy chat help me on this one
     def overwrite_script():
-        path = user_data["Dir"] + ".py"
+        if (user_data["Pyjinn"]):
+
+            path = user_data["Dir"] + ".pyj"
+        else:
+            path = user_data["Dir"] + ".py"
 
         with open(path, "r", encoding="utf-8") as file:
             lines = file.readlines()
@@ -409,7 +416,11 @@ def edit_menu(sender, app_data, user_data):
                 output.insert(insert_at + 2, "<\n")
 
         # --- Write output ---
-        out_path = user_data["Dir"] + ".py"
+        if (user_data["Pyjinn"]):
+
+            out_path = user_data["Dir"] + ".pyj"
+        else:
+            out_path = user_data["Dir"] + ".py"
         with open(out_path, "w", encoding="utf-8") as file:
             file.writelines(output)
 
