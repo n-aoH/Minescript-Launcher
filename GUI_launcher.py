@@ -5,13 +5,17 @@ from time import sleep
 import threading
 import json
 import pkgutil
+import time
 
-from minescript import execute, job_info, EventQueue
+from minescript import *
+from java import JavaClass
 
-MSP = False
+MSP = True
 try:
     from minescript_plus import Util
-    MSP = True
+    
+except ModuleNotFoundError:
+    MSP = False
 except:
     pass
 
@@ -25,6 +29,32 @@ def compute_modules():
             minescript_scripts.append(module.name)
 
 compute_modules()
+
+
+
+### EMBEDDED FROM MSP
+
+Minecraft = JavaClass("net.minecraft.client.Minecraft")
+mc = Minecraft.getInstance()
+def get_clipboard() -> str:
+    """
+    Retrieves the current contents of the system clipboard.
+    Returns:
+        str: The text currently stored in the clipboard.
+    """
+    return mc.keyboardHandler.getClipboard() # type: ignore
+
+
+def set_clipboard(string: str):
+    """
+    Sets the system clipboard to the specified string.
+    Args:
+        string (str): The text to be copied to the clipboard.
+    """
+    mc.keyboardHandler.setClipboard(string)
+
+
+
 
 """
 @Name: GUI Launcher
@@ -46,6 +76,35 @@ try:
     chdir("minescript") #future proofing
 except:
     pass
+
+### MSP Integration: Version
+
+import ast
+
+def get_ver(path: str):
+    with open(path, "r", encoding="utf-8") as f:
+        tree = ast.parse(f.read(), filename=path)
+
+    for node in tree.body:
+        # Handles: _ver = "..."
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "_ver":
+                    return ast.literal_eval(node.value)
+
+        # Handles: _ver: str = "..."
+        if isinstance(node, ast.AnnAssign):
+            if isinstance(node.target, ast.Name) and node.target.id == "_ver":
+                return ast.literal_eval(node.value)
+
+    return None
+
+if MSP:
+    msp_ver = get_ver("minescript_plus.py")
+    
+
+
+
 
 default_config = {
     "Path":"launcher",
@@ -79,7 +138,9 @@ readcfg()
 try:
     import dearpygui.dearpygui as dpg
 except:
-    print(f"This script requires the dearpygui module to operate. Install it in your python instance using 'py -m pip install dearpygui' and the re-run this script. You're almost there ;)")
+    print(f"This script requires the dearpygui module to operate. Install it in your python instance using 'python -m pip install dearpygui' and the re-run this script. You're almost there ;)")
+    set_clipboard("python -m pip install dearpygui")
+    print("Command coppied to clipboard for convenience.")
     exit()
 
 def confied_dropdown(sender, data):
@@ -153,6 +214,43 @@ if CONFINED:
 scripts = []
 categories = ["Uncategorized"]
 
+
+
+settings_paths = os.listdir("launcher data")
+
+last_updated_settings = {}
+def get_settings_for_script():
+    """
+    Gets the script settings updates since it was last called.
+
+    dict["path"] = settings (JSON)
+    """
+    global last_updated_settings
+    script_settings = {}
+    currenttime = time.time()
+    keys = last_updated_settings.keys()
+    
+    data_dir = config["Data Path Name"]+"/"
+
+    for path in settings_paths:
+        if path in keys: #If it's indexed
+            
+            if last_updated_settings[path] != os.path.getmtime(data_dir+path): #If it was updated
+
+                with open(data_dir+path, "r") as file:
+                    script_settings[path] =  json.load(file)
+                    last_updated_settings[path] = os.path.getmtime(data_dir+path)
+
+        else:
+            last_updated_settings[path] = os.path.getmtime(data_dir+path)
+            
+            with open(data_dir+path, "r") as file:
+                    script_settings[path] =  json.load(file)
+    
+    return script_settings
+
+
+    
 
 # Get modules for reference
 
@@ -289,17 +387,32 @@ def executor(sender, data, user_data):
         else:
             #Doesn't exist
             execute(f"\\{user_data}")
+            
             return
 
+def suspender(sender, data, user_data):
+    for job in job_info():
+        
+        
+        cmd = job.command[0].replace("\\","/")
+
+        
+        if user_data in cmd: #Already Exists
+                
+                if job.self != True:
+                    if job.status == "RUNNING":
+                        execute(f"\\suspend {job.job_id}")
+                    else:
+                        execute(f"\\resume {job.job_id}")
+                    return
+        
 def open_github(sender, app_data, user_data):
     webbrowser.open("https:"+user_data)
 
 def open_pip(sender, app_data, user_data):
-    if MSP:
-        Util.set_clipboard("pip install "+user_data)
-        print("Copied!")
-    else:
-        print("Install Minescript Plus to copy a pip link!")
+   
+        set_clipboard("pip install "+user_data)
+
 
 def edit_menu(sender, app_data, user_data):
     script_name = user_data["Name"]
@@ -456,7 +569,10 @@ def edit_menu(sender, app_data, user_data):
         dpg.add_input_text(default_value=script["Description"].lstrip("\n").rstrip("\n").replace("\n\n","\n"),label="Description \n(CTRL + Enter \nfor new line)",ctrl_enter_for_new_line=True,multiline=True,tag=script_name+"_description")
         dpg.add_button(label="Save",callback=overwrite_script)
 
+script_tags = []
 def generate_scripts():
+    global script_tags
+    script_tags = []
     for category in categories:
             category_length = 0
             for script in scripts:
@@ -509,13 +625,173 @@ def generate_scripts():
                                                                 dpg.add_button(label=f"{indicator} {dependency[1]} via Github",callback=open_github,user_data=dependency[0])
 
                                                 dpg.add_text(label="")
-                                                dpg.add_checkbox(label="Run", callback=executor,user_data=script["Dir"])
+
+                                                tag = "run_" + script["Dir"].replace("\\","_").replace("/","_").replace(".","_") + str(script["Pyjinn"])
+                                                script_tags.append(tag)
+                                                dpg.add_checkbox(label="Run", callback=executor,user_data=script["Dir"],tag=tag+"_CB")
+                                                dpg.add_checkbox(label="Suspend", callback=suspender,user_data=script["Dir"],tag=tag+"_P")
+
+                                                
+                                                with dpg.collapsing_header(label="Script Specific Settings"):
+                                                    
+
+                                                    with dpg.table(tag=tag+"_TABLE"):
+                                                        dpg.add_table_column(label="Setting")
+                                                        dpg.add_table_column(label="Value")
+                                                    
+                                                    
+                                                        #with dpg.table_row():
+                                                        #    dpg.add_text("Test")
+                                                        #    dpg.add_input_text(default_value="Testing", width=-1)
+                                                
+                                                #echo(script)
+
+def export_table(sender, app_data, user_data):
+    rows = dpg.get_item_children(user_data[0])[1]
+    path = config["Data Path Name"]+"/"
+
+    values = []
+    data = {}
+    for row in rows:
+        cells = dpg.get_item_children(row)[1]
+
+        for cell in cells:
+            value = dpg.get_value(cell)
+            values.append(value)
+    
+    for i in range(int(len(values)/2)):
+        
+        key = values[i*2]
+        value = values[(i*2)+1]
+
+        try:
+            data[key] = ast.literal_eval(value)
+        except:
+            data[key] = value
+    
+    with open(path+user_data[1],"w") as f:
+        json.dump(data,f)
+        
+        
+
+last_jobs = ""
+def update_monitor():
+    global last_jobs
+    while True:
+        if job_info() != last_jobs:
+            
+            last_jobs = job_info()
+            running = []
+            active = []
+            paths = []
+            for job in job_info():
+                tag = "run_" + job.command[0].replace("\\","_").replace("/","_").replace(".","_") + str(".pyj" in job.source)
+                running.append(tag)
+                if job.status != "RUNNING":
+                    active.append(tag)
+                paths.append([job.command[0],tag])
+
+            
+            for tag in script_tags:
+                dpg.set_value(tag+"_CB", tag in running) # EXECUTE
+                dpg.set_value(tag+"_P", (tag in active and tag in running)) #PAUSE
+
+        updated_settings = get_settings_for_script()
+        for path in scripts:
+            
+            tag = "run_" + path["Dir"].replace("\\","_").replace("/","_").replace(".","_") + str(path["Pyjinn"])
+            
+            if path["Dir"]+".json" in updated_settings.keys():
+                
+
+                table = tag+"_TABLE"
+                dpg.delete_item(table,children_only=True)
+                dpg.add_table_column(label="Setting", parent=table)
+                dpg.add_table_column(label="Value", parent=table)
+                
+
+                for key in updated_settings[path["Dir"]+".json"].keys():
+                    with dpg.table_row(parent=table):
+                        dpg.add_text(key)
+                        dpg.add_input_text(default_value=updated_settings[path["Dir"]+".json"][key],width=-1,callback=export_table,on_enter=True,user_data=[table,path["Dir"]+".json"])
+                
+                
+                
+
+        sleep(0.1)
+        
+
+threading.Thread(target=update_monitor,daemon=True).start()
+
+
+def format_report():
+    info = version_info()
+    report = "Autogenerated Debug Info:\n"
+    report += "MC Version: "+info.minecraft+"\n"
+    try:
+        report += "MSP Version: "+msp_ver+"\n"
+    except:
+        report += "MSP Version: Not Present\n"
+    report += "Mod Loader: "+info.mod_loader
+    set_clipboard(report)
+
+
+def settings_tab():
+    with dpg.collapsing_header(label="Debug Info"):
+                    
+                    info = version_info()
+                    if not MSP:
+                        dpg.add_text("Minescript Plus: "+"Not Present.")
+                    else:
+                        dpg.add_text("Minescript Plus: "+msp_ver)
+
+
+
+                    dpg.add_text("MC Version: "+info.minecraft)
+
+                    dpg.add_text("Minescript Version: "+info.minescript)
+
+                    dpg.add_text("Mod Loader: "+info.mod_loader)
+                    
+                    dpg.add_text("Pyjinn Version: "+info.pyjinn)
+
+                    dpg.add_text("OS: "+info.os_name)
+
+                    dpg.add_button(label="Copy Info",callback=format_report)
+
+def integration_tab():
+    pass
+
+
+def import_tab():
+    pass
+
 
 with dpg.window(label="Launcher", width=600,height=300, tag="Main"):
     
+    with dpg.child_window(label="Bar",tag="Bar Window"):
+        
+        
+        with dpg.tab_bar():
+            
 
-    with dpg.child_window(label="Viewer",tag="Viewer Window"):
-        generate_scripts()
+            with dpg.tab(label="Viewer",tag="Viewer Window"):
+                generate_scripts()
+            
+
+            with dpg.tab(label="Script Integrations (WIP)",tag = "Integrations"):
+                integration_tab()
+            
+            with dpg.tab(label="Settings",tag="Settings"):
+                settings_tab()
+
+            with dpg.tab(label="Import Scripts",tag="Imports"):
+                import_tab()
+            
+
+
+                
+    
                 
                                     
 
