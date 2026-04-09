@@ -60,7 +60,7 @@ def set_clipboard(string: str):
 @Name: GUI Launcher
 @Author: @No
 @MC: Tested on 1.21.10. Works on all versions.
-@Version: 2
+@Version: 3
 @Category: INFO
 @Link: https://github.com/n-aoH/Minescript-Launcher/edit/main/GUI_launcher.py
 @Required: minescript_plus
