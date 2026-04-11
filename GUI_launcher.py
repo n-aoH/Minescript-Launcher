@@ -6,9 +6,18 @@ import threading
 import json
 import pkgutil
 import time
+import urllib
+import urllib.request
+from urllib.parse import urlparse
+import datetime
 
 from minescript import *
-from java import JavaClass
+
+
+try:
+    from java import JavaClass
+except:
+    from lib_java import JavaClass
 
 MSP = True
 try:
@@ -30,11 +39,15 @@ def compute_modules():
 
 compute_modules()
 
-
+window = False
 
 ### EMBEDDED FROM MSP
 
-Minecraft = JavaClass("net.minecraft.client.Minecraft")
+try:
+    Minecraft = JavaClass("net.minecraft.client.Minecraft")
+except:
+    print("Mappings Required! Run '\\install_mappings' in chat to get them!")
+    exit(1)
 mc = Minecraft.getInstance()
 def get_clipboard() -> str:
     """
@@ -60,7 +73,7 @@ def set_clipboard(string: str):
 @Name: GUI Launcher
 @Author: @No
 @MC: Tested on 1.21.10. Works on all versions.
-@Version: 3
+@Version: 4
 @Category: INFO
 @Link: https://github.com/n-aoH/Minescript-Launcher/edit/main/GUI_launcher.py
 @Required: minescript_plus
@@ -109,12 +122,22 @@ if MSP:
 default_config = {
     "Path":"launcher",
     "Data Path Name":"launcher data",
-    "Confined":False
+    "Confined":False,
+    "Always On Top":False,
+    "Hide Except Screens":False,
+    "Inventory Screens Only":True,
+    "Hotload Delay":0.1,
+    "Lib Launcher Min Time":0.1
 }
 
+def save_settings():
+    with open("launcher_config.json", "w") as file:
+        json.dump(config,file)
+
+MONITOR_DELAY = 0.1
 first_time = True
 def readcfg():
-    global config, first_time
+    global config, first_time, MONITOR_DELAY
     try:
 
         with open("launcher_config.json", "x") as file:
@@ -123,9 +146,14 @@ def readcfg():
     except FileExistsError:
 
         with open("launcher_config.json", "r") as file:
-            config = json.load(file)
+            config = default_config
+            
+            cfg = json.load(file)
+            for key in cfg:
+                config[key] = cfg[key]
+        save_settings()
         first_time = False
-        
+        MONITOR_DELAY = config["Hotload Delay"]
 readcfg()    
 
 
@@ -216,7 +244,8 @@ categories = ["Uncategorized"]
 
 
 
-settings_paths = os.listdir("launcher data")
+
+
 
 last_updated_settings = {}
 def get_settings_for_script():
@@ -231,21 +260,30 @@ def get_settings_for_script():
     keys = last_updated_settings.keys()
     
     data_dir = config["Data Path Name"]+"/"
-
+    settings_paths = os.listdir("launcher data")
     for path in settings_paths:
-        if path in keys: #If it's indexed
-            
-            if last_updated_settings[path] != os.path.getmtime(data_dir+path): #If it was updated
+        
+        if path.endswith(".json"):
+            if path in keys: #If it's indexed
+
+                if last_updated_settings[path] != os.path.getmtime(data_dir+path): #If it was updated
+
+                    with open(data_dir+path, "r") as file:
+                        script_settings[path] =  json.load(file)
+                        last_updated_settings[path] = os.path.getmtime(data_dir+path)
+
+            else:
+                last_updated_settings[path] = os.path.getmtime(data_dir+path)
 
                 with open(data_dir+path, "r") as file:
-                    script_settings[path] =  json.load(file)
-                    last_updated_settings[path] = os.path.getmtime(data_dir+path)
-
-        else:
-            last_updated_settings[path] = os.path.getmtime(data_dir+path)
-            
-            with open(data_dir+path, "r") as file:
-                    script_settings[path] =  json.load(file)
+                        script_settings[path] =  json.load(file)
+        
+        elif path.endswith(".notif"):
+            data = {}
+            with open(data_dir+path, "r",encoding="utf-8") as file:
+                data = json.load(file)
+            make_notification(data["Title"],data["Content"],path)
+            os.remove(data_dir+path)
     
     return script_settings
 
@@ -368,7 +406,67 @@ def get_scripts():
 
 get_scripts()   
 
+
+def import_from_github(sender, app_data, user_data=""): #user_data is additional path stuff
+    url = app_data
+    raw_url = url.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/")
+
+    filename = os.path.basename(urlparse(url).path)
+
+    urllib.request.urlretrieve(raw_url, user_data+filename)
+    echo("Successfully imported "+filename+" !")
+    if window:
+        make_notification("Import Successful!",filename)
+
 dpg.create_context()
+
+FIRST_FONT = True
+internal_fonts = {
+    "Standard":[r"https://github.com/n-aoH/Minescript-Launcher/blob/dev/launcher%20data/Roboto-Regular.ttf","Roboto-Regular.ttf",16],
+    "Bold":[r"https://github.com/n-aoH/Minescript-Launcher/blob/dev/launcher%20data/Roboto-Bold.ttf","Roboto-Bold.ttf",20],
+    "Notification":[r"https://github.com/n-aoH/Minescript-Launcher/blob/dev/launcher%20data/Roboto-Medium.ttf","Roboto-Medium.ttf",20]
+    
+    }
+
+os.makedirs(config["Data Path Name"], exist_ok=True)
+
+def getfont(title):
+    global FIRST_FONT
+    
+    name = internal_fonts[title][1]
+    path = os.path.join(config["Data Path Name"], name)
+
+    if os.path.exists(path):
+        
+        font = config["Data Path Name"]+"/"+name
+        
+    else:
+        if FIRST_FONT:
+            print("This script requires Additional assets (fonts, images, etc). They will be downloaded from the official github page in 3..")
+            sleep(1)
+            print("2..")
+            sleep(1)
+            print("1..")
+            sleep(1)
+        import_from_github(sender=None,app_data=internal_fonts[title][0],user_data=config["Data Path Name"]+"/")
+        sleep(0)
+        
+        font = config["Data Path Name"]+"/"+name
+        
+    FIRST_FONT = False
+    return font
+
+fonts = {}
+with dpg.font_registry():
+    for font in internal_fonts.keys():
+        fonts[font] = dpg.add_font(getfont(font),internal_fonts[font][2])
+
+
+dpg.bind_font(fonts["Standard"])
+
+
+
+
 dpg.create_viewport(title='Minescript GUI Launcher', width=600, height=1000)
 
 
@@ -407,11 +505,12 @@ def suspender(sender, data, user_data):
                     return
         
 def open_github(sender, app_data, user_data):
-    webbrowser.open("https:"+user_data)
+    webbrowser.open("https://"+user_data)
 
 def open_pip(sender, app_data, user_data):
    
         set_clipboard("pip install "+user_data)
+
 
 
 def edit_menu(sender, app_data, user_data):
@@ -605,7 +704,7 @@ def generate_scripts():
 
                                                     if script["Link"] != "":
                                                         
-                                                        dpg.add_button(label="Repo Link",callback= lambda: webbrowser.open(script["Link"]))
+                                                        dpg.add_button(label="Repo Link",callback= lambda: webbrowser.open(script["Link"].lstrip(" ")))
                                                     dpg.add_button(label="Edit",callback=edit_menu,user_data=script)
 
                                                 if script["Dependencies"] != []:
@@ -613,6 +712,7 @@ def generate_scripts():
                                                         dependencies = script["Dependencies"]
                                                         #print(dependencies)
                                                         for dependency in dependencies:
+                                                            
                                                             name = dependency[1]
                                                             if name in installed_modules:
                                                                 indicator = "[X]"
@@ -718,22 +818,70 @@ def update_monitor():
                 
                 
 
-        sleep(0.1)
+        sleep(MONITOR_DELAY)
         
 
-threading.Thread(target=update_monitor,daemon=True).start()
+
 
 
 def format_report():
     info = version_info()
     report = "Autogenerated Debug Info:\n"
     report += "MC Version: "+info.minecraft+"\n"
+    report += "Pyjinn Version: "+info.pyjinn+"\n"
     try:
         report += "MSP Version: "+msp_ver+"\n"
     except:
         report += "MSP Version: Not Present\n"
-    report += "Mod Loader: "+info.mod_loader
+    report += "Mod Loader: "+info.mod_loader+"\n"
+    
+    report += "Mods:\n```"
+    for mod in mods:
+        report += mod+", "
+    report.removesuffix(", ")
+    report += "```"
+    
     set_clipboard(report)
+
+def toggle_top(sender, app_data, user_data):
+    #echo(app_data)
+    if user_data == "Always On Top":
+        dpg.set_viewport_always_top(app_data)
+    config[user_data] = app_data
+    save_settings()
+
+def text_setting(sender, app_data, user_data):
+
+    try:
+        data = ast.literal_eval(app_data)
+    except:
+        data = app_data
+
+    
+    config[user_data] = data
+    if user_data == "Hotload Delay":
+        global MONITOR_DELAY
+        MONITOR_DELAY = data
+    save_settings()
+
+def float_setting(sender, app_data, user_data):
+    try:
+        data = ast.literal_eval(app_data)
+    except:
+        data = app_data
+
+    data = round(data*100)/100
+    
+    config[user_data] = data
+    if user_data == "Hotload Delay":
+        global MONITOR_DELAY
+        MONITOR_DELAY = data
+    save_settings()
+
+mods = []
+for mod in os.listdir("../mods"):
+    if mod.endswith(".jar"):
+        mods.append(mod.removesuffix(".jar"))
 
 
 def settings_tab():
@@ -757,21 +905,77 @@ def settings_tab():
 
                     dpg.add_text("OS: "+info.os_name)
 
+                    with dpg.tree_node(label="Mods"):
+                        for mod in mods:
+                            dpg.add_text(mod)
+
                     dpg.add_button(label="Copy Info",callback=format_report)
+    
+    
+    with dpg.tree_node(label="Window Settings"):
+        dpg.add_checkbox(label="Always On Top",callback=toggle_top,default_value=config["Always On Top"],user_data="Always On Top") #
+        dpg.add_checkbox(label="Show Only With Screens",callback=toggle_top,default_value=config["Hide Except Screens"],user_data="Hide Except Screens")
+        dpg.add_checkbox(label="Only Show With Inventory Screens (Requires setting above)",callback=toggle_top,default_value=config["Inventory Screens Only"],user_data="Inventory Screens Only")
+    
+    with dpg.tree_node(label="Performance"):
+        dpg.add_text("All settings here require a restart of Launcher / Lib_launcher scripts.")
+        dpg.add_input_double(label="Hotloading Delay Interval (Effects lib_launcher API responsiveness)",callback=float_setting,default_value=config["Hotload Delay"],user_data="Hotload Delay",width=100)
+        dpg.add_input_double(label="lib_launcher Minimum Delay Interval",callback=float_setting,default_value=config["Lib Launcher Min Time"],user_data="Lib Launcher Min Time",width=100)
+    """
+    dpg.add_text("SETTINGS PAST HERE NOT IMPLEMENTED")
+    with dpg.tree_node(label="Auto Updates"):
+        dpg.add_text("These are just placeholders, nothing does anything yet :)")
+        dpg.add_checkbox(label="Automatically check for updates")
+        dpg.add_input_int(label="Automatic update interval (Days)",width=100)
+
+        dpg.add_checkbox(label="Allow Scripts to Auto-Update")
+        dpg.add_input_int(label="Auto Update Interval (Days)")
+
+    #with dpg.tree_node(label=)
+    """
 
 def integration_tab():
     pass
 
 
+
+
 def import_tab():
-    pass
+    dpg.add_text("Import Singular Script")
+    dpg.add_input_text(label="Import from github",default_value="https://github.com/R4z0rX/minescript-scripts/blob/main/Minescript-Plus/minescript_plus.py",callback=import_from_github,on_enter=True,user_data="")
+
+def kill_notif(sender, app_data, user_data):
+    dpg.delete_item(user_data)
+def make_notification(title,content,tag=None):
+    
+    title = title + f" ({datetime.datetime.now().strftime("%H:%M")})"
+    if tag is None:
+        tag = title
+    with dpg.child_window(label=title,parent="Notifications",height=150, tag=tag):
+        with dpg.group(horizontal=False):
+            t = dpg.add_text(title,indent=20)
+            dpg.bind_item_font(t, fonts["Bold"])
+            dpg.add_separator()
+            t = dpg.add_text(content,indent=20)
+            dpg.bind_item_font(t, fonts["Notification"])
+
+            with dpg.group(horizontal=True):
+                dpg.add_button(label="OK",callback=kill_notif,user_data=tag,indent=20)
+
+                #dpg.add_button(label="Hi!!")
+        
 
 
 with dpg.window(label="Launcher", width=600,height=300, tag="Main"):
     
     with dpg.child_window(label="Bar",tag="Bar Window"):
         
-        
+        dpg.add_text("Notifications",tag="Notifications Label")
+        with dpg.child_window(label="Notifications",height=200,tag="Notifications"):
+            pass
+        #make_notification("Welcome!","Welcome to the GUI launcher!\nI hope you have fun!")
+        #make_notification("Welcome!!","Welcome to the GUI launcher!\nI hope you have fun!")
+        #make_notification("Welcome!!!","Welcome to the GUI launcher!\nI hope you have fun!")
         with dpg.tab_bar():
             
 
@@ -779,7 +983,7 @@ with dpg.window(label="Launcher", width=600,height=300, tag="Main"):
                 generate_scripts()
             
 
-            with dpg.tab(label="Script Integrations (WIP)",tag = "Integrations"):
+            with dpg.tab(label="Script Integrations",tag = "Integrations"):
                 integration_tab()
             
             with dpg.tab(label="Settings",tag="Settings"):
@@ -789,24 +993,76 @@ with dpg.window(label="Launcher", width=600,height=300, tag="Main"):
                 import_tab()
             
 
-
+def setting_thread():
+    last_update = os.path.getmtime("launcher_config.json")
+    while True:
+        if last_update != os.path.getmtime("launcher_config.json"):
+            last_update = os.path.getmtime("launcher_config.json")
+            readcfg()
+        time.sleep(0.4)
                 
+#threading.Thread(target=setting_thread,daemon=True).start()
+                
+def game_montoring():
     
+    with render_loop:
+        time.sleep(0.1)
+        last_viewport = dpg.get_viewport_pos()
+
+        while True:
+            if config["Hide Except Screens"] and config["Always On Top"]:
+                name = str(screen_name())
                 
-                                    
+                if name == "None" or (config["Inventory Screens Only"] and (not "Crafting" in name and not "Creative" in name)):
+                    dpg.set_viewport_pos((0,-9999))
+                else:
+                    if dpg.get_viewport_pos()[1] < -999:
+                        dpg.set_viewport_pos(last_viewport)
+
+                    last_viewport = dpg.get_viewport_pos()
+
 
 
 
 dpg.set_primary_window("Main",True)
+
 dpg.setup_dearpygui()
 dpg.show_viewport()
+
+dpg.set_viewport_always_top(config["Always On Top"])
 
 def keep_awake():
     with EventQueue() as event_queue:
         event_queue.register_world_listener()
         while True:
             sleep(500)
+
+
+def notification_manager():
+    while True:
+        try: #idrk but it hates exiting and this fixes it
+            sleep(0.1)
+            children = False
+            group = dpg.get_item_children("Notifications")
+            for item in (group).keys():
+                if group[item] != []:
+                    children = True
+
+            if children:
+                dpg.show_item("Notifications")
+                dpg.show_item("Notifications Label")
+            else:
+                dpg.hide_item("Notifications")
+                dpg.hide_item("Notifications Label")
+
+        except:
+            pass
+
+window = True
 threading.Thread(target=keep_awake, daemon=True).start()
+threading.Thread(target=game_montoring,daemon=True).start()
+threading.Thread(target=update_monitor,daemon=True).start()
+threading.Thread(target=notification_manager,daemon=True).start()
 
 
 dpg.start_dearpygui()
